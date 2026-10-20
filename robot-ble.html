@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#070a12">
+<title>Robot BLE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #070a12;
+    --panel: rgba(255,255,255,0.045);
+    --border: rgba(255,255,255,0.09);
+    --text: #e8ecf6;
+    --muted: #7d869c;
+    --cyan: #22d3ee;
+    --violet: #8b5cf6;
+    --pink: #ec4899;
+    --red: #ef4444;
+    --green: #22c55e;
+    --amber: #f59e0b;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+    overflow-x: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* ---------- Sfondo animato ---------- */
+  .bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; }
+  .blob {
+    position: absolute; border-radius: 50%; filter: blur(80px); opacity: .45;
+    animation: float 18s ease-in-out infinite alternate;
+  }
+  .blob.b1 { width: 420px; height: 420px; background: var(--violet); top: -120px; left: -120px; }
+  .blob.b2 { width: 380px; height: 380px; background: var(--cyan); bottom: -140px; right: -100px; animation-delay: -6s; }
+  .blob.b3 { width: 260px; height: 260px; background: var(--pink); top: 45%; left: 55%; opacity: .25; animation-delay: -12s; }
+  @keyframes float {
+    0%   { transform: translate(0,0) scale(1); }
+    50%  { transform: translate(60px,40px) scale(1.15); }
+    100% { transform: translate(-40px,70px) scale(.95); }
+  }
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  }
+
+  /* ---------- Pannello ---------- */
+  .card {
+    width: 100%; max-width: 420px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 32px;
+    padding: 28px 22px 26px;
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    box-shadow: 0 30px 80px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08);
+    text-align: center;
+  }
+
+  header { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 18px; }
+  .logo {
+    width: 52px; height: 52px; border-radius: 16px;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--cyan), var(--violet));
+    box-shadow: 0 8px 30px rgba(139,92,246,.45);
+  }
+  .logo svg { width: 30px; height: 30px; }
+  .logo .eye { animation: blink 4s infinite; transform-origin: center; transform-box: fill-box; }
+  @keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+  h1 {
+    margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -.02em;
+    background: linear-gradient(90deg, #fff, #c4b5fd 60%, var(--cyan));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { margin: 2px 0 0; font-size: 12px; color: var(--muted); letter-spacing: .14em; text-transform: uppercase; text-align: left; }
+
+  /* ---------- Stato + connessione ---------- */
+  .status {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 8px 16px; border-radius: 999px;
+    background: rgba(255,255,255,.05); border: 1px solid var(--border);
+    font-size: 14px; color: #cbd2e1; margin: 4px 0 16px;
+    max-width: 100%;
+  }
+  .status span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; transition: .3s; }
+  body[data-state="connected"] .dot { background: var(--green); box-shadow: 0 0 0 0 rgba(34,197,94,.6); animation: pulse 1.8s infinite; }
+  body[data-state="connecting"] .dot { background: var(--amber); animation: pulse-a 1s infinite; }
+  body[data-state="error"] .dot { background: var(--red); box-shadow: 0 0 12px var(--red); }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,.6); } 100% { box-shadow: 0 0 0 12px rgba(34,197,94,0); } }
+  @keyframes pulse-a { 50% { opacity: .3; } }
+
+  #connect {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%; padding: 16px; border: 0; border-radius: 18px; cursor: pointer;
+    font: 600 17px "Space Grotesk", sans-serif; color: white;
+    background: linear-gradient(135deg, var(--cyan), var(--violet) 55%, var(--pink));
+    background-size: 200% 200%; animation: shift 6s ease infinite;
+    box-shadow: 0 10px 30px rgba(139,92,246,.4), inset 0 1px 0 rgba(255,255,255,.3);
+    transition: transform .15s, box-shadow .2s, opacity .2s;
+  }
+  #connect:active { transform: scale(.97); }
+  #connect svg { width: 20px; height: 20px; }
+  @keyframes shift { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+  body[data-state="connected"] #connect {
+    background: rgba(34,197,94,.12); color: #86efac; animation: none;
+    box-shadow: inset 0 0 0 1px rgba(34,197,94,.35);
+  }
+  body[data-state="connecting"] #connect { opacity: .7; pointer-events: none; }
+
+  /* ---------- Croce direzionale ---------- */
+  .pad-wrap { position: relative; margin: 30px auto 26px; width: 290px; height: 290px; max-width: 100%; aspect-ratio: 1; }
+  .pad {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: radial-gradient(circle at 50% 35%, rgba(255,255,255,.07), rgba(255,255,255,.015) 70%);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 0 40px rgba(0,0,0,.5), 0 0 0 10px rgba(255,255,255,.02);
+  }
+  .pad::before {
+    content: ""; position: absolute; inset: -2px; border-radius: 50%;
+    background: conic-gradient(from 0deg, transparent, var(--cyan), transparent 30%, var(--violet), transparent 60%);
+    -webkit-mask: radial-gradient(circle, transparent 69%, black 70%);
+            mask: radial-gradient(circle, transparent 69%, black 70%);
+    opacity: .0; transition: opacity .4s;
+    animation: spin 6s linear infinite;
+  }
+  body[data-state="connected"] .pad::before { opacity: .6; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .dir, .stop {
+    position: absolute; border: 0; cursor: pointer; touch-action: none;
+    display: grid; place-items: center; color: #dbe2f0;
+    transition: transform .08s, background .15s, box-shadow .15s, color .15s;
+  }
+  .dir {
+    width: 84px; height: 84px; border-radius: 26px;
+    background: linear-gradient(160deg, rgba(255,255,255,.11), rgba(255,255,255,.03));
+    border: 1px solid rgba(255,255,255,.1);
+    box-shadow: 0 8px 20px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.12);
+  }
+  .dir svg { width: 34px; height: 34px; }
+  .dir[data-cmd="F"] { top: 10px; left: calc(50% - 42px); }
+  .dir[data-cmd="B"] { bottom: 10px; left: calc(50% - 42px); }
+  .dir[data-cmd="L"] { left: 10px; top: calc(50% - 42px); }
+  .dir[data-cmd="R"] { right: 10px; top: calc(50% - 42px); }
+  .dir.active {
+    transform: scale(.93);
+    color: #fff;
+    background: linear-gradient(160deg, var(--cyan), var(--violet));
+    box-shadow: 0 0 30px rgba(34,211,238,.55), inset 0 1px 0 rgba(255,255,255,.3);
+  }
+
+  .stop {
+    width: 96px; height: 96px; border-radius: 50%;
+    left: calc(50% - 48px); top: calc(50% - 48px);
+    font: 700 16px "Space Grotesk", sans-serif; letter-spacing: .12em; color: white;
+    background: radial-gradient(circle at 35% 30%, #f87171, var(--red) 55%, #b91c1c);
+    box-shadow: 0 0 0 7px rgba(239,68,68,.15), 0 10px 30px rgba(239,68,68,.45), inset 0 2px 0 rgba(255,255,255,.3);
+  }
+  .stop.active { transform: scale(.9); box-shadow: 0 0 0 12px rgba(239,68,68,.25), 0 0 50px rgba(239,68,68,.8); }
+
+  /* ---------- Velocità ---------- */
+  .speed {
+    background: rgba(0,0,0,.25); border: 1px solid var(--border);
+    border-radius: 24px; padding: 18px 18px 20px;
+  }
+  .speed-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .label { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); text-align: left; }
+  .gauge { position: relative; width: 92px; height: 54px; }
+  .gauge svg { width: 100%; height: 100%; overflow: visible; }
+  .gauge .val {
+    position: absolute; left: 0; right: 0; bottom: -4px;
+    font: 700 22px "JetBrains Mono", monospace; color: #fff;
+  }
+  .pct { font: 500 13px "JetBrains Mono", monospace; color: var(--cyan); margin-top: 4px; text-align: left; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 12px; border-radius: 999px; outline: none; margin: 0;
+    background: linear-gradient(90deg, var(--cyan), var(--violet) var(--p), rgba(255,255,255,.08) var(--p));
+    touch-action: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 30px; height: 30px; border-radius: 50%;
+    background: #fff; border: 4px solid var(--violet); cursor: pointer;
+    box-shadow: 0 0 0 6px rgba(139,92,246,.2), 0 4px 14px rgba(0,0,0,.5);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #fff; border: 4px solid var(--violet); cursor: pointer;
+    box-shadow: 0 0 0 6px rgba(139,92,246,.2);
+  }
+  .presets { display: flex; gap: 8px; margin-top: 16px; }
+  .presets button {
+    flex: 1; padding: 10px 0; border-radius: 12px; cursor: pointer;
+    font: 600 13px "Space Grotesk", sans-serif; color: #cbd2e1;
+    background: rgba(255,255,255,.05); border: 1px solid var(--border);
+    transition: .15s;
+  }
+  .presets button:active { transform: scale(.95); }
+  .presets button.on { color: #fff; border-color: rgba(139,92,246,.6); background: rgba(139,92,246,.2); }
+
+  .hint { margin-top: 18px; font-size: 12px; color: var(--muted); }
+  kbd {
+    font: 500 11px "JetBrains Mono", monospace; padding: 2px 6px; border-radius: 6px;
+    background: rgba(255,255,255,.07); border: 1px solid var(--border); color: #cbd2e1;
+  }
+  @media (hover: none) { .hint { display: none; } }
+
+  @media (max-width: 360px) {
+    .pad-wrap { width: 250px; height: 250px; }
+    .dir { width: 72px; height: 72px; }
+    .dir[data-cmd="F"], .dir[data-cmd="B"] { left: calc(50% - 36px); }
+    .dir[data-cmd="L"], .dir[data-cmd="R"] { top: calc(50% - 36px); }
+    .stop { width: 84px; height: 84px; left: calc(50% - 42px); top: calc(50% - 42px); }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; } }
+</style>
+</head>
+<body data-state="idle">
+
+<div class="bg"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="grid"></div></div>
+
+<main class="card">
+  <header>
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3v3"/><circle cx="12" cy="2.5" r="1" fill="white"/>
+        <rect x="4" y="6" width="16" height="12" rx="4"/>
+        <circle class="eye" cx="9" cy="12" r="1.6" fill="white" stroke="none"/>
+        <circle class="eye" cx="15" cy="12" r="1.6" fill="white" stroke="none"/>
+        <path d="M2 11v3M22 11v3M9 21h6"/>
+      </svg>
+    </div>
+    <div>
+      <h1>Robot BLE</h1>
+      <p class="sub">Telecomando wireless</p>
+    </div>
+  </header>
+
+  <div class="status"><i class="dot"></i><span id="status">Disconnesso</span></div>
+
+  <button id="connect">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>
+    <span id="connectLabel">Connetti robot</span>
+  </button>
+
+  <div class="pad-wrap">
+    <div class="pad"></div>
+    <button class="dir" data-cmd="F" aria-label="Avanti">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>
+    </button>
+    <button class="dir" data-cmd="L" aria-label="Sinistra">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>
+    </button>
+    <button class="stop" data-cmd="S" aria-label="Stop">STOP</button>
+    <button class="dir" data-cmd="R" aria-label="Destra">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+    </button>
+    <button class="dir" data-cmd="B" aria-label="Indietro">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+  </div>
+
+  <section class="speed">
+    <div class="speed-head">
+      <div>
+        <div class="label">Velocità</div>
+        <div class="pct" id="speedPct">39%</div>
+      </div>
+      <div class="gauge">
+        <svg viewBox="0 0 100 56">
+          <defs>
+            <linearGradient id="g" x1="0" x2="1">
+              <stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#ec4899"/>
+            </linearGradient>
+          </defs>
+          <path d="M8 52 A42 42 0 0 1 92 52" stroke="rgba(255,255,255,.08)" stroke-width="8" fill="none" stroke-linecap="round"/>
+          <path id="arc" d="M8 52 A42 42 0 0 1 92 52" stroke="url(#g)" stroke-width="8" fill="none" stroke-linecap="round"
+                pathLength="100" stroke-dasharray="100" stroke-dashoffset="61" style="transition: stroke-dashoffset .2s"/>
+        </svg>
+        <div class="val" id="speedValue">100</div>
+      </div>
+    </div>
+    <input id="speed" type="range" min="0" max="255" value="100">
+    <div class="presets">
+      <button data-speed="80">Piano</button>
+      <button data-speed="160">Medio</button>
+      <button data-speed="255">Turbo</button>
+    </div>
+  </section>
+
+  <p class="hint">Tastiera: <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> o <kbd>WASD</kbd> · <kbd>Spazio</kbd> = stop</p>
+</main>
+
+<script>
+const SERVICE = "19b10000-e8f2-537e-4f6c-d104768a1214";
+const CHARACTERISTIC = "19b10001-e8f2-537e-4f6c-d104768a1214";
+
+let device;
+let tx;
+let moving = false;
+
+const statusEl = document.getElementById("status");
+const connectBtn = document.getElementById("connect");
+const connectLabel = document.getElementById("connectLabel");
+const speedEl = document.getElementById("speed");
+
+function setState(state, text) {
+  document.body.dataset.state = state;
+  statusEl.textContent = text;
+  connectLabel.textContent =
+    state === "connected" ? "Disconnetti" :
+    state === "connecting" ? "Connessione…" : "Connetti robot";
+}
+
+function buzz(ms) {
+  if (navigator.vibrate) navigator.vibrate(ms);
+}
+
+async function send(command) {
+  if (!tx) {
+    setState("error", "Connetti prima il robot");
+    return;
+  }
+  try {
+    await tx.writeValue(new TextEncoder().encode(command));
+  } catch (e) {
+    setState("error", "Errore invio: " + e.message);
+  }
+}
+
+connectBtn.onclick = async () => {
+  // Se già connesso, il pulsante disconnette
+  if (device && device.gatt && device.gatt.connected) {
+    try { await send("S"); } catch (_) {}
+    device.gatt.disconnect();
+    return;
+  }
+
+  try {
+    if (!navigator.bluetooth) {
+      setState("error", "Web Bluetooth non supportato in questo browser");
+      return;
+    }
+
+    setState("connecting", "Ricerca robot…");
+
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE] }]
+    });
+
+    device.addEventListener("gattserverdisconnected", () => {
+      tx = null;
+      moving = false;
+      clearActive();
+      setState("idle", "Disconnesso");
+    });
+
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE);
+    tx = await service.getCharacteristic(CHARACTERISTIC);
+
+    setState("connected", "Connesso a " + (device.name || "robot"));
+    buzz([30, 40, 30]);
+
+    await send("S");
+    await send("V" + speedEl.value);
+  } catch (e) {
+    setState("error", "Connessione fallita: " + e.message);
+  }
+};
+
+/* ---------- Pulsanti direzionali ---------- */
+function clearActive() {
+  document.querySelectorAll("[data-cmd].active").forEach(b => b.classList.remove("active"));
+}
+
+document.querySelectorAll("[data-cmd]").forEach(button => {
+  const cmd = button.dataset.cmd;
+
+  // STOP viene inviato al tocco; gli altri comandi
+  // continuano finché il pulsante resta premuto.
+  button.addEventListener("pointerdown", async e => {
+    e.preventDefault();
+    button.classList.add("active");
+    if (cmd === "S") {
+      buzz(40);
+      moving = false;
+      await send("S");
+      setTimeout(() => button.classList.remove("active"), 150);
+    } else {
+      buzz(15);
+      moving = true;
+      await send(cmd);
+    }
+  });
+
+  const release = () => {
+    if (cmd !== "S") button.classList.remove("active");
+    if (cmd !== "S" && moving) {
+      moving = false;
+      send("S");
+    }
+  };
+
+  button.addEventListener("pointerup", release);
+  button.addEventListener("pointercancel", release);
+  button.addEventListener("pointerleave", release);
+  button.addEventListener("contextmenu", e => e.preventDefault());
+});
+
+/* ---------- Tastiera ---------- */
+const keyMap = {
+  ArrowUp: "F", w: "F", W: "F",
+  ArrowDown: "B", s: "B", S: "B",
+  ArrowLeft: "L", a: "L", A: "L",
+  ArrowRight: "R", d: "R", D: "R",
+  " ": "S"
+};
+let heldKey = null;
+
+document.addEventListener("keydown", e => {
+  const cmd = keyMap[e.key];
+  if (!cmd || e.repeat || e.target === speedEl) return;
+  e.preventDefault();
+  const btn = document.querySelector(`[data-cmd="${cmd}"]`);
+  btn.classList.add("active");
+  if (cmd === "S") {
+    moving = false;
+    heldKey = null;
+    send("S");
+    setTimeout(() => btn.classList.remove("active"), 150);
+  } else {
+    heldKey = e.key;
+    moving = true;
+    send(cmd);
+  }
+});
+
+document.addEventListener("keyup", e => {
+  const cmd = keyMap[e.key];
+  if (!cmd || cmd === "S") return;
+  document.querySelector(`[data-cmd="${cmd}"]`).classList.remove("active");
+  if (heldKey === e.key && moving) {
+    heldKey = null;
+    moving = false;
+    send("S");
+  }
+});
+
+/* ---------- Velocità ---------- */
+function renderSpeed(v) {
+  const pct = Math.round(v / 255 * 100);
+  document.getElementById("speedValue").textContent = v;
+  document.getElementById("speedPct").textContent = pct + "%";
+  document.getElementById("arc").style.strokeDashoffset = 100 - pct;
+  speedEl.style.setProperty("--p", pct + "%");
+  document.querySelectorAll(".presets button").forEach(b =>
+    b.classList.toggle("on", +b.dataset.speed === +v));
+}
+
+speedEl.addEventListener("input", e => renderSpeed(e.target.value));
+speedEl.addEventListener("change", e => send("V" + e.target.value));
+
+document.querySelectorAll(".presets button").forEach(b => {
+  b.addEventListener("click", () => {
+    speedEl.value = b.dataset.speed;
+    renderSpeed(speedEl.value);
+    buzz(10);
+    send("V" + speedEl.value);
+  });
+});
+
+renderSpeed(speedEl.value);
+</script>
+</body>
+</html>

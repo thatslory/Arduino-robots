@@ -335,11 +335,16 @@ function buzz(ms) {
   if (navigator.vibrate) navigator.vibrate(ms);
 }
 
+// Direzioni invertite: il robot era montato al contrario rispetto ai comandi.
+// Se un giorno serve tornare indietro, basta svuotare questo oggetto.
+const INVERT = { F: "B", B: "F", L: "R", R: "L" };
+
 async function send(command) {
   if (!tx) {
     setState("error", "Connetti prima il robot");
     return;
   }
+  command = INVERT[command] || command;
   try {
     await tx.writeValue(new TextEncoder().encode(command));
   } catch (e) {
